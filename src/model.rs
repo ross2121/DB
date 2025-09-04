@@ -30,6 +30,11 @@ pub struct TradeData {
     pub quote_quantity: String,
     pub market: String,
 }
+#[derive( Serialize, Deserialize)]
+pub enum DbMessage {
+    TradeAdded(TradeData),
+    OrderUpdate(OrderUpdateData),
+}
 #[derive(Serialize,Deserialize,Clone,PartialEq,Debug)]
 pub enum Side  {
     Sell,Buy
