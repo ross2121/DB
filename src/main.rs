@@ -2,15 +2,14 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{self, ConnectionManager};
 use schema::{trades, orders};
 use std::env;
-use redis::Client;
+use redis::{Client, Commands};
 use serde::{Deserialize, Serialize};
 use tokio;
 use serde_json;
 use validator::Validate;
+use dotenv::dotenv;
 use diesel::prelude::*;
 
-use chrono::{TimeZone, Utc};
-use log::info;
 
 use crate::model::{DbMessage, OrderUpdateData, TradeData};
 
@@ -31,6 +30,24 @@ pub fn main_connection()->dbpool{
   };
   let dbconnection=ConnectionManager::<PgConnection>::new(database);
   r2d2::Pool::builder().build(dbconnection).expect("Failed to connect")
+}
+pub async fn db_processo(pool:dbpool){
+   let client=Client::open("http").expect("Errror connecting");
+   let mut conn=client.get_connection().expect("Error connectig");
+   loop {
+    let result:Option<String> = conn.rpop("db_processor", Some(std::num::NonZero::new(1).unwrap())).expect("Not able to pop msg");
+     if let Some(message)=result{
+      match serde_json::from_str::<DbMessage>(&message) {
+          Ok(message)=>{
+            match process_message(message, &pool) {
+                Ok(_)=>print!("Suceefull added"),
+                Err(e)=>print!("Error processing message")
+            }
+          }
+          Err(e)=>print!("Error debugign message")
+      }
+     }
+   }
 }
 pub fn process_message(message: DbMessage,pool:&dbpool)->Result<(),diesel::result::Error>{
     let conn = &mut pool.get().unwrap();
@@ -60,5 +77,14 @@ pub fn process_message(message: DbMessage,pool:&dbpool)->Result<(),diesel::resul
       }
     Ok(())
 }
-pub fn main(){
+#[tokio::main]
+pub async fn main(){
+  dotenv().ok();
+  env_logger::init();
+  
+  println!("Starting DB processor...");
+
+  let pool =main_connection();
+  println!("Successfully connected to database");
+  db_processo(pool).await;
 }
